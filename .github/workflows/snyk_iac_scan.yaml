@@ -22,5 +22,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: snyk-report-${{ matrix.repo }}
+          name: snyk-report-${{ github.run_id }}
           path: snyk-report.json
