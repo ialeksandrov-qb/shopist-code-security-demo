@@ -20,7 +20,7 @@ jobs:
       
       - name: Upload Snyk report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: snyk-report-${{ github.run_id }}
           path: snyk-report.json
