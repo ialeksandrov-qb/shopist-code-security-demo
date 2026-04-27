@@ -1,0 +1,120 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.language == 'swift' && 120 || 60 }}
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: autobuild
+            os: ubuntu-latest
+          - language: go
+            build-mode: autobuild
+            os: ubuntu-latest
+          - language: java-kotlin
+            build-mode: manual
+            os: ubuntu-latest
+          - language: javascript-typescript
+            build-mode: none
+            os: ubuntu-latest
+          - language: python
+            build-mode: none
+            os: ubuntu-latest
+          - language: ruby
+            build-mode: none
+            os: ubuntu-latest
+          - language: swift
+            build-mode: manual
+            os: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- Java / Kotlin: pin a Gradle that has org.gradle.util.WrapUtil ----------
+      - name: Set up JDK 11 (java-kotlin)
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Set up Gradle 7.6.4 (java-kotlin)
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '7.6.4'
+
+      # ---------- .NET: make sure a SDK is available for autobuild ----------
+      - name: Set up .NET (csharp)
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # ---------- Go ----------
+      - name: Set up Go (go)
+        if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      # ---------- Initialize CodeQL ----------
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # ---------- Manual builds ----------
+      - name: Build Kotlin project
+        if: matrix.language == 'java-kotlin'
+        working-directory: kotlin
+        run: gradle build -x test --no-daemon
+
+      # If your java/ project also uses Gradle, autobuild from java/ would conflict
+      # with the kotlin/ manual build, so we explicitly build it here too.
+      # Remove or adjust this step if java/ uses Maven or no build is required.
+      - name: Build Java project (if Gradle)
+        if: matrix.language == 'java-kotlin' && hashFiles('java/build.gradle', 'java/build.gradle.kts', 'java/pom.xml') != ''
+        working-directory: java
+        run: |
+          if [ -f pom.xml ]; then
+            mvn -B -DskipTests package
+          else
+            gradle build -x test --no-daemon
+          fi
+
+      - name: Build Swift package
+        if: matrix.language == 'swift'
+        working-directory: swift
+        run: swift build
+
+      # ---------- Autobuild for csharp / go ----------
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v3
+
+      # ---------- Analyze ----------
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
